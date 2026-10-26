@@ -1,0 +1,14 @@
+{
+  "serve/images.py": {
+    "before": "b9cd259478c62f39b26b21740b501634dcb8e348acb8e9b0af28f68ee7d47e9d",
+    "after": "b21d98ba2052cccf6b36152a79d02a498b77fcab53c394e7a03388a4bf331383"
+  },
+  "serve/local_comfy.py": {
+    "before": "78a84ef1841ce2c85dc4433d4e1341e3f0d0d22fa4cd7c70988d542bb6cd31e6",
+    "after": "c7070494af8f89e956b839d169a82caa6f0e75df90c0e17fc3c3d13c5f565145"
+  },
+  "serve/server.py": {
+    "before": "95be06557122f28524de2fced3ff50e2c6c1d51db2b8dae3663f515f84fd4ebd",
+    "after": "fb57b9befda0e2e73afc74ce0da0a88b4412eababd172d78930104d640d06fcf"
+  }
+}

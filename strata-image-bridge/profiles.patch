@@ -1,0 +1,119 @@
+--- a/serve/images.py
++++ b/serve/images.py
+@@ -87,6 +87,13 @@
+ def parse_request(req: dict, cfg: dict) -> dict:
+     """The fields of one /v1/images/generations request, checked.  Unknown OpenAI fields (quality, style, user,
+     background, moderation) are accepted and ignored; an output format other than PNG is refused."""
++    profile = None
++    if cfg.get('local_comfy', {}).get('profiles_config'):
++        from serve.local_comfy import prepare_profile
++        profile = prepare_profile(req, cfg)
++        req = profile['request']
++    elif 'profile' in req:
++        raise ImageRequestError('profile: this backend has no profile registry')
+     prompt = req.get("prompt")
+     if not isinstance(prompt, str) or not prompt.strip():
+         raise ImageRequestError("prompt: a non-empty string")
+@@ -107,6 +114,8 @@
+     if seed is None:
+         seed = random.SystemRandom().randrange(0, 2**31)
+     job = {"prompt": prompt, "width": w, "height": h, "n": n, "steps": steps, "seed": seed, "response_format": fmt}
++    if profile:
++        job['profile_payload'] = profile['payload']
+     if 'stream' in req:
+         if not isinstance(req['stream'], bool):
+             raise ImageRequestError('stream: a boolean')
+@@ -189,13 +198,14 @@
+         reload = self.cfg.get("reload") or "lazy"
+         if reload not in ("lazy", "eager"):
+             raise ValueError(f'images "reload" must be lazy or eager, not {reload!r}')
+-        for k in ("exe", "diffusion_model", "vae", "llm"):
++        required = ('exe',) if self.cfg.get('local_comfy', {}).get('profiles_config') else ('exe', 'diffusion_model', 'vae', 'llm')
++        for k in required:
+             if not isinstance(self.cfg.get(k), str) or not self.cfg[k]:
+                 raise ValueError(f'the config\'s "images" section needs "{k}" (run setup with --images again)')
+         self.policy, self.reload = policy, reload
+         if self.cfg.get('preserve_session') and (policy != 'unload' or reload != 'eager'):
+             raise ValueError('images preserve_session requires gpu_policy=unload and reload=eager')
+-        self.model = self.cfg.get("model_name") or MODEL_NAME
++        self.model = self.cfg.get("model_name") or ('local-image-profiles' if self.cfg.get('local_comfy', {}).get('profiles_config') else MODEL_NAME)
+         self.log = log
+         out = self.cfg.get("out_dir")
+         self.dir = Path(out) if out else Path(tempfile.mkdtemp(prefix="strata-images-"))
+@@ -321,6 +331,8 @@
+                    "backend": self.cfg.get("backend"), "quant": self.cfg.get("quant")}
+         if runner_timings:
+             figures['timings'] = runner_timings
++        if job.get('profile_payload'):
++            figures.pop('quant', None)
+         if job.get('references'):
+             figures['references'] = len(job['references'])
+         for key, pat in (("text_encode_ms", r"get_learned_condition completed, taking ([0-9.]+) ?ms"),
+@@ -352,12 +364,16 @@
+             else:
+                 item["b64_json"] = base64.b64encode(png).decode("ascii")
+             data.append(item)
+-        return {"created": int(time.time()), "data": data, "model": self.model,
++        selected = job.get('profile_payload', {}).get('profile')
++        if selected:
++            figures['profile'] = selected
++        return {"created": int(time.time()), "data": data, "model": selected or self.model,
+                 "output_format": "png", "size": f"{job['width']}x{job['height']}", "strata": figures}
+ 
+     def status(self) -> dict:
+         out = {"enabled": True, "model": self.model, "backend": self.cfg.get("backend"),
+                "quant": self.cfg.get("quant"), "gpu_policy": self.policy, **self.totals}
++        out['profiles'] = bool(self.cfg.get('local_comfy', {}).get('profiles_config'))
+         if self.progress:
+             out["step"], out["steps"] = self.progress
+         if self.last:
+--- a/serve/local_comfy.py
++++ b/serve/local_comfy.py
+@@ -6,6 +6,19 @@
+ import io
+ from pathlib import Path
+ import re
++import subprocess
++
++
++def prepare_profile(req, cfg):
++    local = cfg['local_comfy']
++    command = [str(cfg['exe']), '-s', '-X', 'utf8', str(local['runner']),
++               '--prepare', '--config', str(local['profiles_config'])]
++    result = subprocess.run(command, input=json.dumps(req), text=True, encoding='utf-8',
++                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
++                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
++    if result.returncode:
++        raise ValueError('profile: ' + result.stderr.strip().splitlines()[-1])
++    return json.loads(result.stdout)
+ 
+ 
+ DEFAULT_NEGATIVE = 'low quality, blurry, jpeg artifacts, deformed, bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, text, watermark, signature'
+@@ -69,11 +82,12 @@
+ def prepare_command(cfg, job, pattern):
+     local = cfg['local_comfy']
+     work = Path(pattern).parent
+-    payload = dict(local)
+-    for key, field in (('unet', 'diffusion_model'), ('clip', 'llm'), ('vae', 'vae')):
+-        model = Path(cfg[field])
+-        payload[key] = model.name
+-        payload[key + '_dir'] = str(model.parent)
++    payload = dict(job.get('profile_payload') or local)
++    if 'profile_payload' not in job:
++        for key, field in (('unet', 'diffusion_model'), ('clip', 'llm'), ('vae', 'vae')):
++            model = Path(cfg[field])
++            payload[key] = model.name
++            payload[key + '_dir'] = str(model.parent)
+     payload.update(prompt=job['prompt'], width=job['width'], height=job['height'], steps=job['steps'],
+                    seeds=[job['seed'] + i for i in range(job['n'])],
+                    outs=[pattern % i for i in range(job['n'])],
+--- a/serve/server.py
++++ b/serve/server.py
+@@ -6711,6 +6711,7 @@
+                 self._json(200, {"status": "ok", "max_context": svc.reported_ctx(), "model": svc.model,
+                                  "images": svc.vision is not None, "api_key": bool(svc.api_key),
+                                  "image_generation": svc.images is not None,
++                                 "image_profiles": bool(svc.images is not None and svc.images.cfg.get('local_comfy', {}).get('profiles_config')),
+                                  "image_editing": bool(svc.images is not None and svc.images.cfg.get('local_comfy')),
+                                  "session_restore_pending": bool(svc.required_session_restore),
+                                  "gpu_sleep": {"enabled": svc.gpu_sleep_enabled, "pending": svc.gpu_sleep_pending,
