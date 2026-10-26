@@ -1,0 +1,19 @@
+{
+	"name": "imgpane",
+	"version": "0.1.0",
+	"private": true,
+	"description": "エージェントが作った・読んだ画像を Windows Terminal の横ペインに Sixel で描くビューアと、pi 用の連携拡張",
+	"type": "module",
+	"keywords": ["pi-package"],
+	"license": "UNLICENSED",
+	"pi": {
+		"extensions": ["./pi/image-pane.ts"]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"scripts": {
+		"test": "node --test \"test/*.test.mjs\""
+	}
+}
