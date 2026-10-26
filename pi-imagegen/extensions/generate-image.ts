@@ -14,6 +14,17 @@ import { imagegenScript } from "./lib/imagegen-dir.ts";
 import { progressDecoder, progressText, QwenProgressView as ImageProgressView,
 	registerPreviewResize, type QwenProgress as ImageProgress } from "./lib/qwen-progress.ts";
 
+// 旧SDXL（gen-image.ps1）は portrait / landscape / square だけを受け取る。同じ寸法の指定は名前に戻し、
+// ほかの寸法は LLM を止める前にここで断る（gen-image.ps1 の引数検査で落ちると理由が伝わりにくい）。
+const LEGACY_SIZES: Record<string, string> = { "832x1216": "portrait", "1216x832": "landscape", "1024x1024": "square" };
+
+function legacySize(size: string): string {
+	const value = size.trim().toLowerCase();
+	if (["portrait", "landscape", "square"].includes(value)) return value;
+	if (LEGACY_SIZES[value]) return LEGACY_SIZES[value];
+	throw new Error(`size "${size}" is not available on the tags-only legacy SDXL path; use portrait (832x1216), landscape (1216x832) or square (1024x1024), or use prompt with a profile for other sizes`);
+}
+
 const generateImage = defineTool({
 	name: "generate_image",
 	label: "Generate image",
@@ -32,10 +43,10 @@ const generateImage = defineTool({
 		negative_prompt: Type.Optional(Type.String()),
 		tags: Type.Optional(Type.String({
 			description:
-				"English Danbooru-style tags, comma-separated: subject first (1girl, solo, fox ears), then hair/eyes, clothing, expression, pose, framing, background. Quality tags are added automatically.",
+				"Legacy SDXL path only, separate from profiles; use it when the user asks for SDXL or Danbooru tags. English Danbooru-style tags, comma-separated: subject first (1girl, solo, fox ears), then hair/eyes, clothing, expression, pose, framing, background. Quality tags are added automatically.",
 		})),
 		size: Type.Optional(
-			Type.String({ description: "WIDTHxHEIGHT (multiples of 32), or portrait/landscape/square. Omit for the profile default." }),
+			Type.String({ description: "WIDTHxHEIGHT (multiples of 32), or portrait/landscape/square. Omit for the profile default. The tags-only legacy SDXL path accepts only portrait (832x1216), landscape (1216x832) or square (1024x1024)." }),
 		),
 		count: Type.Optional(
 			Type.Integer({ minimum: 1, maximum: 8, description: "Number of images (seed, seed+1, ...). Generated sequentially; time depends on the GPU and image size." }),
@@ -72,7 +83,8 @@ const generateImage = defineTool({
 			if (ctx.model?.provider === "localllm-strata") args.push("-Gpu", "rtx4060");
 		}
 		const sizes: Record<string, string> = { portrait: "832x1248", landscape: "1248x832", square: "1024x1024" };
-		if (params.size) args.push("-Size", managed ? sizes[params.size] ?? params.size : params.size);
+		if (params.size && managed) args.push("-Size", sizes[params.size] ?? params.size);
+		if (params.size && !managed) args.push("-Size", legacySize(params.size));
 		if (params.count) args.push("-Count", String(params.count));
 		if (params.seed !== undefined) args.push("-Seed", String(params.seed));
 
