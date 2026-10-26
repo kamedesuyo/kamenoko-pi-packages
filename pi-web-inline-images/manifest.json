@@ -1,0 +1,10 @@
+{
+	"id": "inline-images",
+	"name": "inline-images",
+	"version": "0.1.0",
+	"description": "generate_image / generate_image_qwen の出力にある「画像: パス」を、その場で画像として表示する",
+	"apiVersion": 2,
+	"permissions": ["dom"],
+	"view": false,
+	"preload": true
+}
