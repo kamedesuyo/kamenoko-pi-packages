@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+*.log
+# このPC専用の設定は site 側に置く。誤って部品へ置いた時の保険。
+*.local.toml
+*.local.json
