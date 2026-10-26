@@ -34,8 +34,8 @@ test("StrataのQwenは画像APIがある場合だけ許可する", { skip }, asy
 
 test("Strataの画像生成では専用4060を明示し従来経路ではautoを保つ", { skip }, async () => {
   const calls = [];
-  const spawnMock = mock.method(childProcess, "spawn", (command, args) => {
-    calls.push({ command, args });
+  const spawnMock = mock.method(childProcess, "spawn", (command, args, options) => {
+    calls.push({ command, args, options });
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
@@ -53,6 +53,15 @@ test("Strataの画像生成では専用4060を明示し従来経路ではautoを
     }
     assert.deepEqual(calls[0].args.slice(-2), ["-Gpu", "rtx4060"]);
     assert.equal(calls[1].args.includes("-Gpu"), false);
+    const prompt = '"日本語" $(not-code)';
+    const result = await imageTool.definition.execute("profile-test", {profile:"my-model", prompt, seed:0, size:"768x1024"}, undefined, undefined, ctx);
+    assert.equal(result.terminate, false);
+    assert(calls[2].args.some(a => a.endsWith("gen-image-profile.ps1")));
+    assert(calls[2].args.includes("my-model"));
+    assert(!calls[2].args.includes(prompt));
+    assert(!calls[2].args.includes("-Gpu"));
+    assert.equal(calls[2].options.env.GEN_IMAGE_PROMPT, prompt);
+    assert.equal(calls[2].args.at(-1), "0");
   } finally {
     spawnMock.mock.restore();
     syncBuiltinESMExports();

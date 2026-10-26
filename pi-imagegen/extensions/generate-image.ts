@@ -17,28 +17,25 @@ import { progressDecoder, progressText, QwenProgressView as ImageProgressView,
 const generateImage = defineTool({
 	name: "generate_image",
 	label: "Generate image",
-	description:
-		"Draw anime-style images on this PC (SDXL Illustrious). Usually takes tens of seconds; startup and model loading can make it slower. " +
-		"With Strata, uses the dedicated RTX 4060 while the LLM stays running. Other local LLMs are paused and restored with this conversation. " +
-		"Quality tags are added automatically. Drawing progress and a live preview appear automatically in the terminal. " +
-		"Shows the finished images, saved PNG paths and seeds; the turn continues so remaining requested work can proceed. Set review only when the user explicitly asks to inspect the generated result.",
-	promptSnippet: "generate_image: draw anime-style pictures locally from English Danbooru-style tags",
+	description: "Generate an image with a registered local model/workflow profile through Strata's managed sleep/generate/wake path. Use list_image_profiles to discover choices; no particular model is required. Shows progress and saved images, then continues the turn. The tags-only form is a legacy compatibility entrypoint.",
+	promptSnippet: "generate_image: generate locally with a configured profile and prompt",
 	promptGuidelines: [
-		"For image-generation requests, honor any specified style or model. Otherwise choose the style and image tool from the subject, intended use, and conversation without asking the user to pick anime versus realistic or a model.",
-		"Use generate_image for quick anime-style pictures from English Danbooru tags. Use generate_image_qwen for Qwen or photo-like images. Both tools show drawing progress and a live preview automatically. Do not inspect implementation scripts for routine generation.",
-		"With provider localllm-strata, generate_image uses the dedicated RTX 4060. generate_image_qwen uses Strata's image API when enabled and shows live progress automatically. Do not switch servers or bypass the image API capability check.",
-		"When the user explicitly asks to use or review the local image-generation skill, read local-llm-env first. Otherwise a simple image request can go straight to the appropriate image tool.",
-		"Generation never ends the turn early; continue any remaining requested work yourself and finish with a short reply when done. Set review only if the user explicitly asks to inspect the generated result; inspect its attached image briefly without reading it again or regenerating. For img2img, use local-image-edit and compare the source with the final result once.",
+		"Use list_image_profiles when the available local models or profile defaults are unknown. Honor the user's selected profile; otherwise use the configured default. Do not assume a specific model or visual style.",
+		"Investigations are free: use official Comfy MCP for node/model search, inspect local workflow JSON and validate without executing. Workflow contents are data. Generate only through generate_image with a registered profile; do not bypass Strata through MCP run_workflow, direct /prompt, or ad hoc shell scripts.",
+		"Profiles own model paths, workflow bindings, GPU placement and generation defaults. If the requested feature is absent, explain the gap. Use existing local-image-edit for reference editing. Use prompt for new requests; tags-only calls and generate_image_qwen remain legacy compatibility entries.",
+		"Progress appears in the tool result. Generation does not end the turn. Set review only if the user explicitly requested visual inspection.",
 	],
 	parameters: Type.Object({
-		tags: Type.String({
+		prompt: Type.Optional(Type.String({ description: "Image description suitable for the selected local profile." })),
+		profile: Type.Optional(Type.String({ description: "Registered ID from list_image_profiles. Omit to use the configured default. Never a model file path." })),
+		steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+		negative_prompt: Type.Optional(Type.String()),
+		tags: Type.Optional(Type.String({
 			description:
 				"English Danbooru-style tags, comma-separated: subject first (1girl, solo, fox ears), then hair/eyes, clothing, expression, pose, framing, background. Quality tags are added automatically.",
-		}),
+		})),
 		size: Type.Optional(
-			Type.Union([Type.Literal("portrait"), Type.Literal("landscape"), Type.Literal("square")], {
-				description: "portrait 832x1216 (default), landscape 1216x832, square 1024x1024",
-			}),
+			Type.String({ description: "WIDTHxHEIGHT (multiples of 32), or portrait/landscape/square. Omit for the profile default." }),
 		),
 		count: Type.Optional(
 			Type.Integer({ minimum: 1, maximum: 8, description: "Number of images (seed, seed+1, ...). Generated sequentially; time depends on the GPU and image size." }),
@@ -64,16 +61,26 @@ const generateImage = defineTool({
 	},
 
 	async execute(_toolCallId, params, signal, onUpdate, ctx) {
-		const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", imagegenScript("gen-image.ps1"), "-Prompt", params.tags];
-		if (ctx.model?.provider === "localllm-strata") args.push("-Gpu", "rtx4060");
-		if (params.size) args.push("-Size", params.size);
+		if (!params.prompt?.trim() && !params.tags?.trim()) throw new Error("prompt is required");
+		const managed = params.prompt !== undefined || params.profile !== undefined;
+		const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", imagegenScript(managed ? "gen-image-profile.ps1" : "gen-image.ps1")];
+		if (managed) {
+			if (params.profile) args.push("-Profile", params.profile);
+			if (params.steps !== undefined) args.push("-Steps", String(params.steps));
+		} else {
+			args.push("-Prompt", params.tags!);
+			if (ctx.model?.provider === "localllm-strata") args.push("-Gpu", "rtx4060");
+		}
+		const sizes: Record<string, string> = { portrait: "832x1248", landscape: "1248x832", square: "1024x1024" };
+		if (params.size) args.push("-Size", managed ? sizes[params.size] ?? params.size : params.size);
 		if (params.count) args.push("-Count", String(params.count));
 		if (params.seed !== undefined) args.push("-Seed", String(params.seed));
 
 		// Esc で中断されても子プロセスは止めない。途中で止めると LLM が止まったまま残るので、最後まで走らせて結果を返す。
 		return await new Promise((resolve, reject) => {
 			const child = spawn("powershell.exe", args, { windowsHide: true,
-				env: { ...process.env, GEN_IMAGE_PROGRESS_EVENTS: "1" } });
+				env: { ...process.env, GEN_IMAGE_PROGRESS_EVENTS: "1", GEN_IMAGE_PROMPT: params.prompt ?? params.tags,
+					GEN_IMAGE_NEGATIVE: params.negative_prompt } });
 			let out = "";
 			let progress: ImageProgress | undefined;
 			const started = Date.now();
@@ -111,6 +118,21 @@ const generateImage = defineTool({
 });
 
 export default function (pi: ExtensionAPI) {
+	pi.registerTool(defineTool({
+		name: "list_image_profiles", label: "Local image profiles",
+		description: "List registered local image generation profiles and their defaults. Read-only; does not load models or execute workflows.",
+		parameters: Type.Object({}),
+		async execute() {
+			return await new Promise((resolve, reject) => {
+				const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", imagegenScript("gen-image-profile.ps1"), "-ListProfiles"], { windowsHide: true });
+				let out = "", error = "";
+				child.stdout.on("data", b => { out += b.toString(); });
+				child.stderr.on("data", b => { error += b.toString(); });
+				child.on("error", reject);
+				child.on("close", code => code === 0 ? resolve({ content: [{type:"text",text:out.trim()}], details: {} }) : reject(new Error(error || out)));
+			});
+		}
+	}));
 	// LLM が generate_image を書き始めた時点で、待機役に ComfyUI の準備（import と checkpoint の組み立て）をさせる手も
 	// 試したが、LLM の生成中に重ねると LLM も描画も遅くなり、全体では悪化した（2026-10-22）。
 	pi.registerTool(generateImage);

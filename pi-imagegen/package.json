@@ -2,7 +2,7 @@
 	"name": "pi-imagegen",
 	"version": "0.1.0",
 	"private": true,
-	"description": "pi から imagegen（SDXL / Qwen-Image 2.1）で画像を描くツールと、生成中の途中表示",
+	"description": "登録したローカルモデル・ComfyUI workflowを選んで画像を描くpiツール。Strataの休眠・復帰と途中表示に対応",
 	"type": "module",
 	"keywords": ["pi-package"],
 	"license": "MIT",
