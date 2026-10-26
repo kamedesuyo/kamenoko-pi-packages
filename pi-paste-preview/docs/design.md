@@ -2,22 +2,18 @@
 
 ## 目的と維持する使い方
 
-WezTerm上のpiを使う本人が、クリップボードから貼った画像を送信前に目で確かめ、説明文と一緒に扱えるようにする。
-本人は「送信前の画像プレビューも欲しい」と明示した。Codex CLIとClaude Codeについても同じ要望の文脈で名前が挙がっている。
-既存の画像貼り付け、入力編集、送信操作を維持する。ローカルモデルのthinking、compact、KVキャッシュは今回の変更対象ではない。
+WezTerm上のpiで、クリップボードから貼った画像を送信前に目で確かめ、説明文と一緒に扱えるようにする。
+既存の画像貼り付け、入力編集、送信操作を維持する。ローカルモデルのthinking、compact、KVキャッシュは変更対象ではない。
 
-## 背景と確認した事実
+## 背景と前提にした事実
 
-- Windows版pi 1.4.0はAlt+Vで画像を一時ファイルに保存し、そのパスを入力欄に挿入する。貼り付け直後に再描画を要求する。これは入力欄への画像パス挿入であり、この調査だけでは送信時の画像データ添付まで確認した扱いにしない。
-- piの拡張APIには入力欄のテキスト取得と、入力欄の前後へのコンポーネント設置がある。プレビューはこの公開APIを使う候補とする。
-- 既存image-pane.tsはWezTermで画像を表示でき、2026-10-24に本人が最大化・全画面後も画像が残ることを確認済み。同日、新しい送信前プレビューも本人が表示・拡大・最大化後の表示を確認した。
-- Claude Codeの公式文書はWindowsのAlt+Vによる画像貼り付けを説明している。modsには画像要素と入力欄近くへの描画機能がある。ただし画像の標準対応端末一覧はkitty、Ghostty、iTerm2で、WezTermを標準対応と断定できない。下書き内の画像データ取得も未確認。
-- Codex CLIの公式文書は入力欄への画像貼り付けを説明している。今回確認した範囲では、送信前サムネイルやユーザー拡張による描画方法は確定していない。
-- 共通の好みは `~/.codex/user_design.md` を参照。使い慣れた配置と操作、軽量さ、対象の近くにある操作を優先する。
+- Windows版pi 1.4.0はAlt+Vで画像を一時ファイルに保存し、そのパスを入力欄に挿入する。貼り付け直後に再描画を要求する。
+- piの拡張APIには入力欄のテキスト取得と、入力欄の前後へのコンポーネント設置がある。プレビューはこの公開APIだけで作る。
+- 既存の image-pane.ts は WezTerm で画像を表示でき、最大化・全画面の後も画像が残る。表示の追従はこれを参考にした。
+- Claude Codeは Windows の Alt+V による画像貼り付けに対応し、modsには画像要素と入力欄近くへの描画機能がある。ただし画像の標準対応端末は kitty、Ghostty、iTerm2 で、WezTerm は含まれない。下書き内の画像データを取れるかも確かめられていない。
+- Codex CLI も入力欄への画像貼り付けに対応するが、送信前サムネイルやユーザー拡張による描画の方法は公開されていない。
 
 ## 採用した方向性
-
-2026-10-24、本人が「うん、それでお願い！まずpiに追加してみて！」と採用・実装を指示。piの入力欄近くに小さく表示する構成で進めた。ClaudeとCodexへの追加は今回行っていない。
 
 **貼り付けた画像を入力欄の近くに小さく表示し、文章を書きながら送信対象を確認できるようにする。**
 
@@ -26,15 +22,9 @@ WezTerm上のpiを使う本人が、クリップボードから貼った画像�
 - プレビューは入力に取り込まれた画像ファイルを使う。後から変わるクリップボードを表示し続ける方式は使わない。
 - 画像が複数ある時も本文入力を圧迫せず、どれを見ているか識別できるようにする。
 - 読み込み失敗はファイルを識別できる短い表示にし、本文入力を妨げない。
-- 最大化・全画面・画面幅変更に追従する。既存image-paneの修正を参考にし、新しい表示でも別途確かめる。
+- 最大化・全画面・画面幅変更に追従する。
 
-まずpiの公開拡張APIで成立させる案を推奨する。Claudeはmodsで取り込んだ画像にアクセスできるかとWezTermの描画を確認し、Codexは公開された組み込み方法の有無を確認する。三者共通の外部ペインは表示位置と操作が増えるため、現段階の第一候補にしない。
-
-## 確認する作業
-
-通常の貼り付け、複数画像、入力からの削除、送信後の消去、下書き復元、読み込めないファイル、最大化と全画面、reload後の重複表示と購読解除を確認する。
-最初は隔離した画像ファイルとSDK上の描画試験を使う。本人のクリップボードを書き換えたり、実会話へ試験メッセージを送ったりしない。
-SDK上の描画命令の確認と、実画面で見えることの確認を分ける。
+piの公開拡張APIで成立させる。Claude Code と Codex CLI は上の制約があるため対象にしていない。三者共通の外部ペインは表示位置と操作が増えるため採らなかった。
 
 ## 画面構成と操作
 
@@ -52,45 +42,30 @@ SDK上の描画命令の確認と、実画面で見えることの確認を分�
 上は構成の説明であり実画面のキャプチャではない。
 画像クリック、[拡大]、Alt+Oで大きく開く。拡大中は左右キーで画像を選び、Esc・Enter・Ctrl+C・Alt+Oで閉じる。本文入力へ戻り、拡大中のEnterでは送信しない。
 regularモードでは端末がマウスを扱うため、Alt+Oと拡大中の左右キーを使う。
-Alt+Shift+V案は、通常のESC+大文字Vをpiのキー照合が認識しなかったため撤回。Alt+Oは通常のキー列で認識され、既存pi拡張・pi既定・WezTerm既定との衝突が見つからなかった。
+Alt+Shift+Vは、通常のESC+大文字Vをpiのキー照合が認識しなかったため使わない。Alt+Oは通常のキー列で認識され、既存のpi拡張・piの既定・WezTermの既定と衝突しない。
 
 ## 見た目と実装の判断
 
 既存テーマのdim、accent、warningを使い、枠を追加しない。読み込み中と失敗は短い文字で示す。
-プレビュー専用の拡張とし、既存image-pane.tsを変更しない。piの標準Alt+V、入力編集、送信、モデル用メッセージには介入しない。
+プレビュー専用の拡張とし、既存の image-pane.ts を変更しない。piの標準Alt+V、入力編集、送信、モデル用メッセージには介入しない。
 対象は現在の一時ディレクトリにpiが作るpi-clipboard-UUID画像に限定する。任意のファイルパスやURLを本文から自動で読み込まない。
 選択中の画像を非同期で読み、本文編集のたびに画像を読み直さない。表示中の再描画時には最大1秒に1回statで上書き・欠損を確認する。クリップボードの監視はしない。
 20 MiBまたは4000万画素を超える画像はプレビューに短いエラーを出す。これらは表示の制限であり、標準のパス入力・送信を止めるものではない。
 resize後120msで画像本体を再送し、reload・shutdown時に購読と読み込みを解除する。
 
-## 確認結果
+テストは隔離した画像ファイルとSDK上の描画で行い、利用者のクリップボードや実際の会話は使わない。SDK上の描画命令の確認と、実画面で見えることの確認は分けて扱う。
 
-| 対象 | 結果 | 根拠と限界 |
-| --- | --- | --- |
-| 標準貼り付けとの一致、複数画像、削除と復元、読み込み競合、失敗からの復帰 | Supported | test-draft-image-preview.mjs。実SDKの貼り付け・widget設置を実行。クリップボードだけ試験画像に置換し、表示データが取り込んだ画像と一致することを確認 |
-| 拡大、キー入力、Enterで戻る、画像削除、狭い幅と高さ | Supported | 実TuiAltScreenの描画・overlay・入力経路と画像配置の削除命令を確認。実モニターの見え方ではない |
-| 最大化相当・高さだけ・同じセル数のresize、通常描画で再送し続けない | Supported | 実TuiAltScreenのKitty送信内容。拡大overlayでも確認 |
-| 既存image-pane併用と購読解除 | Supported | 新規12件passed。既存test-image-pane.mjsも9件passed |
-| WezTerm実画面での表示・拡大・最大化後の表示 | Supported（本人確認） | 2026-10-24、/reload→Alt+V→Alt+O→Esc→最大化の確認依頼に対し、本人が「表示・拡大・最大化後の表示もできた」と回答。クリック経路単独や全条件の使いやすさまで確認した扱いにはしない |
+## 置き場と使い方
 
-試験はNode v22.23.2、pi 1.4.0。新規試験は約8.4秒、既存回帰は約3.1秒。本人のクリップボード、実会話、LLM、GPUは試験に使っていない。
-
-## 配置と再確認
-
-2026-10-26 にこのパッケージ（pi-paste-preview）へ移した。下の「当時の配置」は導入時の記録。
-
-- 今の置き場: このパッケージの `extensions/draft-image-preview.ts`。`pi install <パッケージのパス>` で読み込む。
+- 置き場: このパッケージの `extensions/draft-image-preview.ts`。`pi install <パッケージのパス>` で読み込む。
 - テスト: このパッケージで `npm test`。別の版を試す時は環境変数 DRAFT_IMAGE_PREVIEW_EXTENSION で指定する。
 - 有効化: piで/reload、またはpiを新しく起動する。
 - 無効化: `pi remove <パッケージのパス>` して/reloadする。画像の一時ファイルはpi標準の管理を維持する。
-- 当時の配置: 編集用ソースは作業フォルダの `tools/tui-image-preview/`、piが読む配置先は `~/.pi/agent/extensions/`。両方のSHA256は e8593645b9d5587f5e00c1576c2acfe1d3be247a17909bd012c150b8fb4bbc1f。
-
-既存image-pane.ts、local-compact.ts、pi settings.jsonは作業前後のSHA256一致を確認した。Claude/CodexとWezTermの設定も変更していない。
 
 ## 根拠
 
-- ローカルpi: `%APPDATA%/npm/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js` のhandleClipboardPasteと、dist/core/extensions/types.d.tsのgetEditorText/setWidget。
-- 既存画像表示: imgpane パッケージの `pi/image-pane.ts`（当時は `~/.pi/agent/extensions/image-pane.ts`）。
+- pi: `@earendil-works/pi-coding-agent` の `dist/modes/interactive/interactive-mode.js` の handleClipboardPaste と、`dist/core/extensions/types.d.ts` の getEditorText / setWidget。
+- 既存画像表示: imgpane パッケージの `pi/image-pane.ts`。
 - Claude画像貼り付け: https://code.claude.com/docs/en/interactive-mode
 - Claude画像要素と端末制約: https://code.claude.com/docs/en/plugins/mods/gallery#image-and-client
 - Claude描画API: https://code.claude.com/docs/en/plugins/mods/interface
