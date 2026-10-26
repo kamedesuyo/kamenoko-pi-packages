@@ -23,3 +23,9 @@ profileはrunnerのGPU未使用CLIで解決し、未知のIDやモデル未配�
 
 検査は`STRATA_RUNTIME`に対象runtime-packageを指定し、このフォルダで`python -m unittest discover -s test`。
 GPUを使う実生成と会話キャッシュ確認は別途必要。
+
+## ライセンスと出典
+
+`profiles.patch`は [Strata](https://github.com/Niko1221/Strata)（MIT、Copyright (c) 2026 Niko1221 and the Strata contributors）のファイルへの差分で、
+差分の前後の行として Strata とその派生版のコードを含む。その部分は Strata のライセンスに従う（本文は [LICENSE-Strata](LICENSE-Strata)）。
+このフォルダで足した部分（patchの追加行・検査・説明）は、リポジトリ全体と同じ MIT。

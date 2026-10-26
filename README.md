@@ -14,6 +14,7 @@
 | [imgpane](imgpane) | ビューア + piパッケージ | Windows Terminal の横ペインに Sixel で画像を描くビューアと、pi の会話内画像表示 |
 | [pi-paste-preview](pi-paste-preview) | piパッケージ | 入力欄に貼った画像を送信前に小さく表示 |
 | [pi-web-inline-images](pi-web-inline-images) | pi-web-uiプラグイン | ツール出力の「画像: パス」をその場で画像表示 |
+| [strata-image-bridge](strata-image-bridge) | Strataへの差分 | 画像対応の休眠版Strataに、imagegenの登録profileで描く入口を足すpatch |
 
 開発用の小道具は [tools](tools)（piの拡張読み込み確認、settings.json の1キー更新）。
 
@@ -21,4 +22,7 @@
 
 ## ライセンス
 
-MIT（[LICENSE](LICENSE)）。ただし [imagegen](imagegen) だけは GPL-3.0（[imagegen/LICENSE](imagegen/LICENSE)）。ComfyUI（GPL-3.0）を読み込んで動くため。
+MIT（[LICENSE](LICENSE)）。ただし次の2つは例外。
+
+- [imagegen](imagegen) は GPL-3.0（[imagegen/LICENSE](imagegen/LICENSE)）。ComfyUI（GPL-3.0）を読み込んで動くため。
+- [strata-image-bridge](strata-image-bridge) の patch に含まれる Strata のコードは、Strata の MIT（[LICENSE-Strata](strata-image-bridge/LICENSE-Strata)、Copyright (c) 2026 Niko1221 and the Strata contributors）に従う。
