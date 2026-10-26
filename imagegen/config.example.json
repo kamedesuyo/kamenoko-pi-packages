@@ -1,0 +1,23 @@
+{
+  "outputDir": "C:\\Users\\you\\Pictures\\imagegen",
+  "comfyPython": "C:\\ComfyUI_windows_portable\\python_embeded\\python.exe",
+  "sdxl": {
+    "checkpoint": "C:\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\your-sdxl-model.safetensors"
+  },
+  "qwen": {
+    "root": "C:\\qwen-image",
+    "unet": "C:\\models\\diffusion_models\\qwen-image-2.1-Q5_K_M.gguf",
+    "clip": "C:\\models\\text_encoders\\qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "C:\\models\\vae\\qwen_image_2.1_vae_bf16.safetensors",
+    "comfyPort": 8188
+  },
+  "strata": {
+    "url": "http://127.0.0.1:8090",
+    "python": "C:\\strata\\terminal\\current\\python\\python.exe"
+  },
+  "legacyLlm": {
+    "url": "http://127.0.0.1:8080",
+    "pauseScript": "C:\\path\\to\\pause-llm.ps1",
+    "stateFile": "C:\\path\\to\\.pause-llm.json"
+  }
+}
