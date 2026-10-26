@@ -1,23 +1,53 @@
 {
-  "outputDir": "C:\\Users\\you\\Pictures\\imagegen",
-  "comfyPython": "C:\\ComfyUI_windows_portable\\python_embeded\\python.exe",
-  "sdxl": {
-    "checkpoint": "C:\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\your-sdxl-model.safetensors"
+  "outputDir": "C:/Users/you/Pictures/imagegen",
+  "comfyPython": "C:/ComfyUI/python_embeded/python.exe",
+  "comfy": {
+    "dir": "C:/ComfyUI/ComfyUI",
+    "siteDir": "C:/ComfyUI/python_embeded/Lib/site-packages",
+    "customNodes": [
+      "C:/ComfyUI/ComfyUI/custom_nodes/ComfyUI-GGUF"
+    ],
+    "modelPaths": {}
   },
-  "qwen": {
-    "root": "C:\\qwen-image",
-    "unet": "C:\\models\\diffusion_models\\qwen-image-2.1-Q5_K_M.gguf",
-    "clip": "C:\\models\\text_encoders\\qwen3vl_8b_int8_convrot.safetensors",
-    "vae": "C:\\models\\vae\\qwen_image_2.1_vae_bf16.safetensors",
-    "comfyPort": 8188
+  "defaultProfile": "qwen-local",
+  "profiles": {
+    "qwen-local": {
+      "label": "Local Qwen Image 2.1",
+      "description": "Qwen example; use your own local weights and runtime configuration.",
+      "adapter": "qwen21",
+      "ggufDir": "C:/ComfyUI/ComfyUI/custom_nodes/ComfyUI-GGUF",
+      "models": {
+        "unet": {
+          "path": "C:/models/diffusion_models/your-qwen-image-2.1.gguf",
+          "folder": "diffusion_models"
+        },
+        "clip": {
+          "path": "C:/models/text_encoders/your-qwen-text-encoder.safetensors",
+          "folder": "text_encoders"
+        },
+        "vae": {
+          "path": "C:/models/vae/your-qwen-vae.safetensors",
+          "folder": "vae"
+        }
+      },
+      "defaults": {
+        "size": "832x1248",
+        "steps": 25,
+        "cfg_scale": 2.5,
+        "sampler": "er_sde",
+        "scheduler": "beta"
+      },
+      "runtime": {
+        "gpu_uuids": [],
+        "text_encoder_device": "cpu",
+        "min_free_ram_gib": 3
+      }
+    }
+  },
+  "comfyMcp": {
+    "modelPaths": {}
   },
   "strata": {
-    "url": "http://127.0.0.1:8090",
-    "python": "C:\\strata\\terminal\\current\\python\\python.exe"
-  },
-  "legacyLlm": {
-    "url": "http://127.0.0.1:8080",
-    "pauseScript": "C:\\path\\to\\pause-llm.ps1",
-    "stateFile": "C:\\path\\to\\.pause-llm.json"
+    "url": "http://127.0.0.1:YOUR_STRATA_PORT"
   }
 }

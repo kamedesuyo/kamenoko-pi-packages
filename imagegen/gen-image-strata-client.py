@@ -72,7 +72,9 @@ def generate(body, out_dir, base='http://127.0.0.1:8090', emit_events=True, outp
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     paths = []
     for index, (png, item) in enumerate(zip(pngs, items), 1):
-        path = Path(output_paths[index - 1]) if output_paths is not None else folder / f'{stamp}-qwen21-{index}.png'
+        import re
+        label = re.sub(r'[^\w.-]', '_', str(body.get('profile') or 'qwen21'))[:80]
+        path = Path(output_paths[index - 1]) if output_paths is not None else folder / f'{stamp}-{label}-{index}.png'
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('xb') as output:
             output.write(png)

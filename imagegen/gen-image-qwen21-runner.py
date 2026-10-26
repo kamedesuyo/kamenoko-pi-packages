@@ -91,6 +91,16 @@ def configure_gpu(image_job):
         text=True, timeout=10))))
     available = {row[0].strip(): (row[1].strip(), int(row[2])) for row in rows if len(row) == 3}
     wanted = image_job.get('gpu_uuids')
+    if image_job.get('profile_managed'):
+        if wanted:
+            for index, uuid in enumerate(wanted):
+                if uuid not in available:
+                    raise RuntimeError(f'GPU UUIDがありません: {uuid}')
+                minimums = image_job.get('min_free_vram_mib', [])
+                if index < len(minimums) and available[uuid][1] < minimums[index]:
+                    raise RuntimeError(f'画像生成に必要な空きVRAMがありません: {available[uuid]}')
+            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(wanted)
+        return wanted
     if not wanted:
         wanted = [u for u, (name, _) in available.items() if name == 'NVIDIA GeForce RTX 5060 Ti']
     expected = ['NVIDIA GeForce RTX 5060 Ti', 'NVIDIA GeForce RTX 4060'] if image_job.get('strata_managed') else ['NVIDIA GeForce RTX 5060 Ti']
@@ -119,19 +129,41 @@ def available_memory():
     return status.avail_phys, status.avail_page
 
 
+def memory_reserve_gib(image_job):
+    import math
+    from pathlib import Path
+    value = image_job.get('min_free_ram_gib', os.environ.get('IMAGEGEN_MIN_FREE_RAM_GIB'))
+    if value is None:
+        spec = importlib.util.spec_from_file_location('imagegen_config', Path(__file__).with_name('imagegen_config.py'))
+        config_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_module)
+        config = config_module.load_config() if config_module.config_path().exists() else {}
+        value = config.get('qwen', {}).get('min_free_ram_gib', 3)
+    if isinstance(value, bool):
+        raise ValueError('min_free_ram_gibには正の有限数を指定してください')
+    value = float(value)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError('min_free_ram_gibには正の有限数を指定してください')
+    return value
+
+
 def start_memory_guard(image_job):
     if not image_job.get('strata_managed'):
         return
     import threading
+    reserve_gib = memory_reserve_gib(image_job)
+    print(f'Memory guard: free RAM >= {reserve_gib:g} GiB, free commit >= 3 GiB', flush=True)
     def watch():
         low = 0
         while True:
             time.sleep(1)
             free, commit = available_memory()
-            low = low + 1 if min(free, commit) < 3 * 1024**3 else 0
+            low = low + 1 if free < reserve_gib * 1024**3 or commit < 3 * 1024**3 else 0
             if low >= 2:
                 # 自分だけを終了し、親のStrata FIFOがVRAMを戻せるようにする。
-                print('RAM/commit空きが3GiB未満のため画像生成を中止します', file=sys.stderr, flush=True)
+                print(f'空きRAM {free / 1024**3:.2f}GiB（下限{reserve_gib:g}GiB）、'
+                      f'空きcommit {commit / 1024**3:.2f}GiB（下限3GiB）：'
+                      'メモリ下限を割ったため画像生成を中止します', file=sys.stderr, flush=True)
                 os._exit(75)
     threading.Thread(target=watch, daemon=True).start()
 
@@ -209,7 +241,9 @@ def import_comfy(comfy_args, comfy_dir, site_dir):
     from PIL.PngImagePlugin import PngInfo
     import numpy as np
     comfy.model_management.get_torch_device()
-    if job.get('strata_managed'):
+    if job.get('profile_managed'):
+        print('Qwen GPU allocation: DiT/VAE=cuda:0; text encoder=' + job['text_encoder_device'], flush=True)
+    elif job.get('strata_managed'):
         if torch.cuda.device_count() != 2 or '5060 Ti' not in torch.cuda.get_device_name(0) or torch.cuda.get_device_name(1) != 'NVIDIA GeForce RTX 4060':
             raise RuntimeError('CUDAのGPU割り当てが想定と異なります')
         print('Qwen GPU allocation: DiT/VAE=cuda:0 RTX 5060 Ti; text encoder=cuda:1 RTX 4060', flush=True)
@@ -246,7 +280,7 @@ def build(job):
             clip = comfy.sd.load_clip(
                 ckpt_paths=[folder_paths.get_full_path_or_raise('text_encoders', job['clip'])],
                 embedding_directory=folder_paths.get_folder_paths('embeddings'), clip_type=comfy.sd.CLIPType.QWEN_IMAGE,
-                model_options={'load_device': torch.device('cuda:1'), 'offload_device': torch.device('cpu'),
+                model_options={'load_device': torch.device(job.get('text_encoder_device', 'cuda:1')), 'offload_device': torch.device('cpu'),
                                'initial_device': torch.device('cpu')})
         else:
             clip = nodes.CLIPLoader().load_clip(job['clip'], 'qwen_image')[0]
@@ -281,118 +315,124 @@ def release_gpu():
         return False
 
 
-no_power_throttling()
-job = json.load(open(sys.argv[1], encoding='utf-8-sig'))
-try:
-    image_mutex = acquire_image_mutex(job)
-    configure_gpu(job)
-    start_memory_guard(job)
-except Exception as e:
-    fail(str(e))
-if job.get('timeline'):
-    os.environ['LLM_TIMELINE'] = job['timeline']
-mark('runner.job_received')
-seeds, outs = job['seeds'], job['outs']
-if len(seeds) != len(outs):
-    finish({'ok': False, 'error': 'seeds と outs の数が違う'}, 2)
+def main():
+    global job, image_mutex, model, clip, vae, pos, neg, latent, samples, image, edit_latent, references, out
+    no_power_throttling()
+    job = json.load(open(sys.argv[1], encoding='utf-8-sig'))
+    try:
+        image_mutex = acquire_image_mutex(job)
+        configure_gpu(job)
+        start_memory_guard(job)
+    except Exception as e:
+        fail(str(e))
+    if job.get('timeline'):
+        os.environ['LLM_TIMELINE'] = job['timeline']
+    mark('runner.job_received')
+    seeds, outs = job['seeds'], job['outs']
+    if len(seeds) != len(outs):
+        finish({'ok': False, 'error': 'seeds と outs の数が違う'}, 2)
 
-t_wait = time.time()
-while not os.path.exists(job['go']):
-    if os.path.exists(job['abort']):
-        finish({'ok': False, 'error': 'aborted', 'gpu_released': release_gpu()}, 3)
-    if time.time() - t_wait > 300:
-        finish({'ok': False, 'error': 'go が 300 秒来なかった', 'gpu_released': release_gpu()}, 4)
-    time.sleep(0.05)
-mark('runner.go')
-timings['wait_go'] = round(time.time() - t_wait, 2)
+    t_wait = time.time()
+    while not os.path.exists(job['go']):
+        if os.path.exists(job['abort']):
+            finish({'ok': False, 'error': 'aborted', 'gpu_released': release_gpu()}, 3)
+        if time.time() - t_wait > 300:
+            finish({'ok': False, 'error': 'go が 300 秒来なかった', 'gpu_released': release_gpu()}, 4)
+        time.sleep(0.05)
+    mark('runner.go')
+    timings['wait_go'] = round(time.time() - t_wait, 2)
 
-try:
-    emit_progress('loading')
-    import_comfy(job.get('comfy_args', ''), job['comfy_dir'], job['site_dir'])
-    timings['import'] = round(time.time() - T0, 2)
-except Exception as e:
-    fail('import に失敗: %r' % e)
+    try:
+        emit_progress('loading')
+        import_comfy(job.get('comfy_args', ''), job['comfy_dir'], job['site_dir'])
+        timings['import'] = round(time.time() - T0, 2)
+    except Exception as e:
+        fail('import に失敗: %r' % e)
 
-try:
-    model, clip, vae = build(job)
-except Exception as e:
-    fail('モデルの読み込みに失敗: %r' % e)
+    try:
+        model, clip, vae = build(job)
+    except Exception as e:
+        fail('モデルの読み込みに失敗: %r' % e)
 
-files = []
-try:
-    with torch.inference_mode():
-        from comfy_extras.nodes_qwen import TextEncodeQwenImage21
-        t = time.time()
-        emit_progress('encoding')
-        edit_latent = None
-        if job.get('references'):
-            from PIL import ImageOps
-            references = {}
-            for index, ref in enumerate(job['references'], 1):
-                with Image.open(ref['path']) as source:
-                    reference = ImageOps.exif_transpose(source).convert('RGB')
-                    if ref.get('size'):
-                        reference = reference.resize(tuple(ref['size']), Image.Resampling.LANCZOS)
-                    if index == 1 and reference.size != (job['width'], job['height']):
-                        raise ValueError('第1参照画像と出力の寸法が一致しません')
-                    references[f'image_{index}'] = torch.from_numpy(np.asarray(reference).copy()).float().unsqueeze(0) / 255.0
-            # 空latentへ置き換えると参照画像に対する編集位置がずれるため、ノードのlatentを保持する。
-            out = TextEncodeQwenImage21.execute(clip, job['prompt'], job['negative'], vae=vae, resolution=0, images=references)
-            edit_latent = out[2]
-            references = None
-        else:
-            out = TextEncodeQwenImage21.execute(clip, job['prompt'], job['negative'], resolution=1024)
-        pos, neg = out[0], out[1]
-        # テキストエンコーダは一度使えば要らない。参照を外して ComfyUI の管理から落とせば、DiT を載せる時に
-        # GPU から CPU へ書き戻すコピーが起きず、RAM も 8.7GB 空く。
-        clip = out = None
-        import gc
-        gc.collect()
-        comfy.model_management.cleanup_models()
-        comfy.model_management.soft_empty_cache()
-        timings['encode'] = round(time.time() - t, 2)
-        mark('runner.encode_done')
-
-        if model is None:
-            emit_progress('loading')
-            model = load_diffusion(job)
-
-        for i, (seed, path) in enumerate(zip(seeds, outs)):
+    files = []
+    try:
+        with torch.inference_mode():
+            from comfy_extras.nodes_qwen import TextEncodeQwenImage21
             t = time.time()
-            emit_progress('sampling', index=i + 1, count=len(seeds), step=0, steps=job['steps'])
-            install_preview_hook(i + 1)
-            latent = edit_latent if edit_latent is not None else nodes.EmptyLatentImage().generate(job['width'], job['height'], 1)[0]
-            samples = nodes.KSampler().sample(model, seed, job['steps'], job['cfg'], job['sampler'], job['scheduler'],
-                                              pos, neg, latent, denoise=1.0)[0]
-            timings.setdefault('sample', []).append(round(time.time() - t, 2))
-            timings['dit_loaded_mib'] = round(model.loaded_size() / 1024**2, 1)
-            timings['dit_model_mib'] = round(model.model_size() / 1024**2, 1)
-            mark('runner.sampled_%d' % (i + 1))
-            comfy.utils.set_progress_bar_global_hook(None)
+            emit_progress('encoding')
+            edit_latent = None
+            if job.get('references'):
+                from PIL import ImageOps
+                references = {}
+                for index, ref in enumerate(job['references'], 1):
+                    with Image.open(ref['path']) as source:
+                        reference = ImageOps.exif_transpose(source).convert('RGB')
+                        if ref.get('size'):
+                            reference = reference.resize(tuple(ref['size']), Image.Resampling.LANCZOS)
+                        if index == 1 and reference.size != (job['width'], job['height']):
+                            raise ValueError('第1参照画像と出力の寸法が一致しません')
+                        references[f'image_{index}'] = torch.from_numpy(np.asarray(reference).copy()).float().unsqueeze(0) / 255.0
+                # 空latentへ置き換えると参照画像に対する編集位置がずれるため、ノードのlatentを保持する。
+                out = TextEncodeQwenImage21.execute(clip, job['prompt'], job['negative'], vae=vae, resolution=0, images=references)
+                edit_latent = out[2]
+                references = None
+            else:
+                out = TextEncodeQwenImage21.execute(clip, job['prompt'], job['negative'], resolution=1024)
+            pos, neg = out[0], out[1]
+            # テキストエンコーダは一度使えば要らない。参照を外して ComfyUI の管理から落とせば、DiT を載せる時に
+            # GPU から CPU へ書き戻すコピーが起きず、RAM も 8.7GB 空く。
+            clip = out = None
+            import gc
+            gc.collect()
+            comfy.model_management.cleanup_models()
+            comfy.model_management.soft_empty_cache()
+            timings['encode'] = round(time.time() - t, 2)
+            mark('runner.encode_done')
 
-            t = time.time()
-            emit_progress('decoding', index=i + 1, count=len(seeds))
-            image = nodes.VAEDecode().decode(vae, samples)[0][0]
-            timings.setdefault('decode', []).append(round(time.time() - t, 2))
+            if model is None:
+                emit_progress('loading')
+                model = load_diffusion(job)
 
-            t = time.time()
-            emit_progress('saving', index=i + 1, count=len(seeds))
-            arr = np.clip(255.0 * image.cpu().numpy(), 0, 255).astype(np.uint8)
-            info = PngInfo()
-            info.add_text('parameters', '%s\nNegative prompt: %s\nSteps: %d, Sampler: %s, Schedule type: %s, CFG scale: %g, '
-                                        'Seed: %d, Size: %dx%d, Model: %s' % (
-                              job['prompt'], job['negative'], job['steps'], job['sampler'], job['scheduler'], job['cfg'],
-                              seed, job['width'], job['height'], os.path.splitext(job['unet'])[0]))
-            Image.fromarray(arr).save(path, pnginfo=info, compress_level=4)
-            timings.setdefault('save', []).append(round(time.time() - t, 2))
-            files.append({'path': path, 'seed': seed})
-            mark('runner.saved_%d' % (i + 1))
-except Exception as e:
-    import traceback
-    traceback.print_exc()
-    model = clip = vae = None
-    finish({'ok': False, 'error': '生成に失敗: %r' % e, 'files': files, 'timings': timings, 'gpu_released': release_gpu()}, 1)
+            for i, (seed, path) in enumerate(zip(seeds, outs)):
+                t = time.time()
+                emit_progress('sampling', index=i + 1, count=len(seeds), step=0, steps=job['steps'])
+                install_preview_hook(i + 1)
+                latent = edit_latent if edit_latent is not None else nodes.EmptyLatentImage().generate(job['width'], job['height'], 1)[0]
+                samples = nodes.KSampler().sample(model, seed, job['steps'], job['cfg'], job['sampler'], job['scheduler'],
+                                                  pos, neg, latent, denoise=1.0)[0]
+                timings.setdefault('sample', []).append(round(time.time() - t, 2))
+                timings['dit_loaded_mib'] = round(model.loaded_size() / 1024**2, 1)
+                timings['dit_model_mib'] = round(model.model_size() / 1024**2, 1)
+                mark('runner.sampled_%d' % (i + 1))
+                comfy.utils.set_progress_bar_global_hook(None)
 
-timings['total'] = round(time.time() - T0, 2)
-model = vae = None
-finish({'ok': True, 'files': files, 'timings': timings, 'gpu_released': release_gpu()}, 0)
+                t = time.time()
+                emit_progress('decoding', index=i + 1, count=len(seeds))
+                image = nodes.VAEDecode().decode(vae, samples)[0][0]
+                timings.setdefault('decode', []).append(round(time.time() - t, 2))
+
+                t = time.time()
+                emit_progress('saving', index=i + 1, count=len(seeds))
+                arr = np.clip(255.0 * image.cpu().numpy(), 0, 255).astype(np.uint8)
+                info = PngInfo()
+                info.add_text('parameters', '%s\nNegative prompt: %s\nSteps: %d, Sampler: %s, Schedule type: %s, CFG scale: %g, '
+                                            'Seed: %d, Size: %dx%d, Model: %s' % (
+                                  job['prompt'], job['negative'], job['steps'], job['sampler'], job['scheduler'], job['cfg'],
+                                  seed, job['width'], job['height'], os.path.splitext(job['unet'])[0]))
+                Image.fromarray(arr).save(path, pnginfo=info, compress_level=4)
+                timings.setdefault('save', []).append(round(time.time() - t, 2))
+                files.append({'path': path, 'seed': seed})
+                mark('runner.saved_%d' % (i + 1))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        model = clip = vae = None
+        finish({'ok': False, 'error': '生成に失敗: %r' % e, 'files': files, 'timings': timings, 'gpu_released': release_gpu()}, 1)
+
+    timings['total'] = round(time.time() - T0, 2)
+    model = vae = None
+    finish({'ok': True, 'files': files, 'timings': timings, 'gpu_released': release_gpu()}, 0)
+
+
+if __name__ == "__main__":
+    main()
