@@ -18,3 +18,7 @@
 開発用の小道具は [tools](tools)（piの拡張読み込み確認、settings.json の1キー更新）。
 
 各パッケージのテストは、そのフォルダで `npm test`。
+
+## ライセンス
+
+MIT（[LICENSE](LICENSE)）。ただし [imagegen](imagegen) だけは GPL-3.0（[imagegen/LICENSE](imagegen/LICENSE)）。ComfyUI（GPL-3.0）を読み込んで動くため。

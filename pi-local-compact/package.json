@@ -5,7 +5,7 @@
 	"description": "llama.cpp 向けに、送信済みの履歴をそのまま再利用して思考OFFで compact する pi 拡張",
 	"type": "module",
 	"keywords": ["pi-package"],
-	"license": "UNLICENSED",
+	"license": "MIT",
 	"pi": {
 		"extensions": ["./extensions/local-compact.ts", "./extensions/local-compact-health.ts"]
 	},

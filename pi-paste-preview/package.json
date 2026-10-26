@@ -5,7 +5,7 @@
 	"description": "pi の入力欄に貼った画像を、送信前に入力欄の近くへ小さく表示する拡張",
 	"type": "module",
 	"keywords": ["pi-package"],
-	"license": "UNLICENSED",
+	"license": "MIT",
 	"pi": {
 		"extensions": ["./extensions/draft-image-preview.ts"]
 	},

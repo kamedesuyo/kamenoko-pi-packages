@@ -5,7 +5,7 @@
 	"description": "pi から imagegen（SDXL / Qwen-Image 2.1）で画像を描くツールと、生成中の途中表示",
 	"type": "module",
 	"keywords": ["pi-package"],
-	"license": "UNLICENSED",
+	"license": "MIT",
 	"pi": {
 		"extensions": ["./extensions/generate-image.ts", "./extensions/generate-image-qwen.ts"]
 	},

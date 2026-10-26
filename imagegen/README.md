@@ -44,3 +44,7 @@ python -m unittest discover -s test
 ```
 
 Strata 側の画像APIの検査は Strata 本体と一緒に動かすものなので、このリポジトリには入れていない。
+
+## ライセンス
+
+GPL-3.0（[LICENSE](LICENSE)）。ComfyUI（GPL-3.0）を読み込んで動くため、このフォルダだけリポジトリ全体の MIT と分けている。
