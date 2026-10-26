@@ -34,8 +34,12 @@ ComfyUI のノードをサーバなしで直接呼んで画像を描くスクリ
 
 ## まだこのPC向けに残っている前提
 
-生成役（runner）は GPU を名前で確かめる（SDXL の専用 GPU は RTX 4060、Qwen は RTX 5060 Ti + RTX 4060）。
-別の構成で使うには、GPU の割り当てを設定から渡す変更が要る。
+- 生成役（runner）は GPU を名前で確かめる（SDXL の専用 GPU は RTX 4060、Qwen は RTX 5060 Ti + RTX 4060）。
+  別の構成で使うには、GPU の割り当てを設定から渡す変更が要る。
+- SDXL の生成役（`gen-image-runner.py`）は、LLM が止まっているかを `127.0.0.1` のポートが閉じているかで確かめる。
+  8080（旧 llama-server）は毎回、8090（Strata）は共有 GPU で描く時に見る。設定の `legacyLlm.url` / `strata.url` は見ていない。
+  LLM を別のポートで動かしていると確認が素通りし、8080 / 8090 を別のものが使っていると生成が止まる。
+- 設定に `strata.url` が無い時は `http://127.0.0.1:8090`、`qwen.comfyPort` が無い時は 8188 を使う。
 
 ## テスト
 

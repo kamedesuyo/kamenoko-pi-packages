@@ -23,6 +23,7 @@ imagegen 自体の設定（ComfyUI・モデル・出力先）は imagegen の RE
 ## まだこのPC向けに残っている前提
 
 - provider が `localllm-strata` の時は、SDXL を専用 GPU（`-Gpu rtx4060`）で描かせる。
+- `generate_image_qwen` の `watch` の説明（LLM が読む文）に、ComfyUI のポート 8188 を書いている。imagegen の `qwen.comfyPort` を変えても、この文は変わらない。
 
 ## テスト
 
