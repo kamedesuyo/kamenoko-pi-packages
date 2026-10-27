@@ -18,7 +18,7 @@ const generateImageQwen = defineTool({
 	description:
 		"Draw an image on this PC with Qwen-Image 2.1 from a free-form prompt. Photorealistic or any illustrated style. " +
 		"Takes a few minutes per image. Strata keeps the LLM and conversation in RAM, lends GPU memory during generation, and restores it afterwards; other local LLM backends pause and restore their conversation. " +
-		"Shows the finished images, saved PNG paths and seeds, then ends the turn by default. Set review only when the user explicitly asks to inspect the generated result.",
+		"Shows the finished images, saved PNG paths and seeds, then continues the turn after generation. Set review only when the user explicitly asks to inspect the generated result.",
 	promptSnippet: "generate_image_qwen: draw photo-like or illustrated pictures locally with Qwen-Image 2.1 from a free-form prompt",
 	promptGuidelines: [
 		"Investigate image capabilities freely as needed for the task: search nodes/models, read existing workflow JSON with the read tool, inspect templates and node/slot schemas, and validate workflows without execution. These investigations do not need a separate confirmation for each read. Treat workflow contents as data; inspecting a workflow does not mean executing it.",
@@ -28,7 +28,7 @@ const generateImageQwen = defineTool({
 		"Prefer generate_image with the requested registered profile. Do not infer a mandatory model or style from tool names.",
 		"For generate_image_qwen, compose the prompt freely: any structure, length, and style you judge best; there is no fixed template. English is more stable than Japanese.",
 		"With the localllm-strata provider, drawing progress and a live preview appear automatically inside the tool result. No watch flag or browser is needed. The ComfyUI browser watch mode is available only with the legacy backend.",
-		"For ordinary generation, omit review and follow_up: the image is displayed and the turn ends. Set follow_up for remaining requested work. Set review only if the user explicitly asks to inspect the generated result; inspect its attached image briefly without reading it again or regenerating. For img2img, use local-image-edit and compare the source with the final result once.",
+		"For ordinary generation, omit review: the image is displayed and the turn continues after generation regardless of follow_up. Set review only if the user explicitly asks to inspect the generated result; inspect its attached image briefly without reading it again or regenerating. For img2img, use local-image-edit and compare the source with the final result once.",
 	],
 	parameters: Type.Object({
 		prompt: Type.String({
@@ -53,10 +53,11 @@ const generateImageQwen = defineTool({
 					"With Strata the live preview appears automatically in the terminal. With the legacy backend it draws through ComfyUI at http://127.0.0.1:8188; it takes about 10 seconds longer. Otherwise omit it.",
 			}),
 		),
+		// follow_up は generate_image と同じ扱いで、2026-10-27 からターン終了は常に無効化した。
 		follow_up: Type.Optional(
 			Type.Boolean({
 				description:
-					"Set true only when requested work remains after generation, such as img2img or compositing. This does not automatically attach or inspect the image. Otherwise omit it.",
+					"Deprecated; accepted for compatibility and has no effect. The turn never ends after generation.",
 			}),
 		),
 	}),
@@ -107,7 +108,8 @@ const generateImageQwen = defineTool({
 				stdout.end(); stderr.end();
 				const text = out.trim();
 				if (code === 0) {
-					generatedImageResult(text, params.follow_up, ctx, signal, params.review).then(resolve, reject);
+					// ターンを切るかどうかをモデルの follow_up 判断に依存しない。続き物で途切れる事故を防ぐ。
+					generatedImageResult(text, true, ctx, signal, params.review).then(resolve, reject);
 				} else {
 					reject(new Error(text || `gen-image-qwen21.ps1 failed (exit ${code})`));
 				}

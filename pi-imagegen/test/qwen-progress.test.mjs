@@ -59,8 +59,8 @@ test(`${name}: 分割されたUTF-8とイベントから途中画像・進捗を
   assert.ok(partial.content[0].text.includes('1/4 step'));
   assert.equal(updates.find(u => u.details?.[key]?.phase === 'decoding').details[key].preview, preview);
   assert.equal(updates.find(u => u.details?.[key]?.index === 2).details[key].preview, undefined);
-  // generate_image は 2026-10-26 から生成後もターンを続ける。Qwen は既定で終える。
-  assert.equal(result.terminate === true, name === 'generate_image_qwen');
+  // generate_image は 2026-10-26、generate_image_qwen は 2026-10-27 から生成後もターンを続ける。
+  assert.notEqual(result.terminate, true);
   assert.equal(result.content.length, 1);
   assert.ok(result.content[0].text.includes('準備しています'));
   assert.ok(!JSON.stringify(result).includes(prefix));

@@ -10,7 +10,7 @@ pi から [imagegen](../imagegen) を呼んで画像を描く pi 拡張。
 
 - 生成中の進み具合と途中画像を、ツール欄の中に描く（画像を描ける端末で）。
 - 結果は「画像: パス（seed N）」の行で返す。`review` を付けた時だけ、画像対応モデルに完成画像を見せる。
-- `generate_image` は生成後もターンを続ける。`generate_image_qwen` は既定でターンを終え、`follow_up` で続ける。
+- `generate_image` も `generate_image_qwen` も、生成後はターンを続ける。`follow_up` は互換のために受け取るだけで効果はない。
 
 ## 入れ方
 

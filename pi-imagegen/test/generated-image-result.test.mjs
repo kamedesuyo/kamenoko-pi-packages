@@ -36,10 +36,10 @@ async function run(name, params = {}, context = ctx) {
 	return registered.definition.execute("review-test", { tags: "red fox, snow", prompt: "A red fox in the snow.", ...params }, undefined, undefined, context);
 }
 
-// generate_image は 2026-10-26 から生成後もターンを続ける（follow_up は互換のため受け取るだけ）。Qwen は既定で終える。
-const endsTurn = (name) => name === "generate_image_qwen";
+// generate_image は 2026-10-26、generate_image_qwen は 2026-10-27 から生成後もターンを続ける（follow_up は互換のため受け取るだけ）。
+const endsTurn = () => false;
 
-test("通常生成は画像対応モデルでも確認せず表示する（Qwenはターンを終える）", async () => {
+test("通常生成は画像対応モデルでも確認せず表示し、ターンは終了しない", async () => {
 	exitCode = 0;
 	output = `画像: ${fixture}（seed 42）\r\n全体 39 秒`;
 	for (const name of ["generate_image", "generate_image_qwen"]) {
@@ -79,7 +79,7 @@ test("複数枚と半角括弧の結果も画像本体を渡す", async () => {
 	assert.equal(result.details.generatedImages[1].seed, 43);
 });
 
-test("画像非対応モデルは画像を読まず未確認にし、Qwenは追加作業の指定時だけ続ける", async () => {
+test("画像非対応モデルは画像を読まず未確認にし、ターンは常に続く", async () => {
 	output = `画像: ${fixture}（seed 42）`;
 	const textOnly = { ...ctx, model: { input: ["text"] } };
 	for (const name of ["generate_image", "generate_image_qwen"]) {
