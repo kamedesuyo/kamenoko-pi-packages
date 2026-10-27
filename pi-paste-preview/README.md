@@ -6,7 +6,7 @@ pi の入力欄に貼り付けた画像（Alt+V などで一時ファイルと�
 - 入力欄から画像を消す・送信して入力欄が空になると、表示も消える。
 - 画像を描ける端末（WezTerm・kitty・Ghostty、その中の Herdr）で動く。
 
-設計の経緯は [docs/design.md](docs/design.md)。
+設計の考え方は [docs/design.md](docs/design.md)。
 
 ## 入れ方
 

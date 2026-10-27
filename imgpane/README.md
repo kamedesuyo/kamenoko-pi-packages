@@ -4,7 +4,6 @@
 
 - `viewer/` — Windows Terminal の横ペインに Sixel で画像を描くビューア（Python、Pillow と numpy を使う）。
 - `pi/image-pane.ts` — pi 拡張。読んだ・作った画像をビューアへ送り、画像に対応した端末（WezTerm・kitty・Ghostty、その中の Herdr）では会話の中にも描く。
-- `e2e/check-inline-image.ps1` — Herdr + WezTerm 上の pi で、会話の中の画像表示が動くかを裏で確かめる。
 
 ## 約束（ほかの道具から送る方法）
 
@@ -34,7 +33,6 @@ pi の中では `/imgpane` でビューアを開き、`/imgshow <パス>` で会
 |---|---|
 | ビューアを動かす Python | 環境変数 `IMGPANE_PYTHON`、なければ `%LOCALAPPDATA%\imgpane\python.txt` の1行目、なければ PATH の `python` |
 | 新しい画像を自動で拾うフォルダ | `%LOCALAPPDATA%\imgpane\config.json` の `{"watch": ["C:\\path\\to\\images"]}` |
-| E2E 検査で LLM の起動を確かめる URL | `check-inline-image.ps1 -LlmHealthUrl <URL>` または環境変数 `IMGPANE_CHECK_LLM_HEALTH` |
 
 ## テスト
 
@@ -43,3 +41,6 @@ npm test
 ```
 
 pi 本体はグローバルに入っているものを使う。場所は `PI_ROOT` で指定できる。
+
+`e2e/check-inline-image.ps1` は、Herdr + WezTerm 上の pi で、会話の中の画像表示が動くかを裏で確かめる検査。
+LLM の起動を確かめる URL は `-LlmHealthUrl <URL>` か環境変数 `IMGPANE_CHECK_LLM_HEALTH` で渡す。
